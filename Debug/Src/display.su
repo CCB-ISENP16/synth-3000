@@ -1,0 +1,3 @@
+display.c:10:6:SPI_write	16	static
+display.c:21:6:MAX7219_Config	8	static
+display.c:38:6:Segment_Display	24	static
