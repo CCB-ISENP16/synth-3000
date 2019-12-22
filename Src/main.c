@@ -54,8 +54,19 @@ int pwm=0;
 int adc=0;
 int state = 0;
 
+int La = 3635;
+int Do = 6109;
+int Re = 5455;
+int Mi = 4848;
+
+int multiplier = 1;
+
+int gamme= 0;
+
 uint16_t fq = 0;
 int psc = 0;
+int psc2 = 0;
+int adc1,adc2;
 uint8_t data[5];
 /* USER CODE END PV */
 
@@ -68,6 +79,53 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+
+void turnOnLED()
+{
+	HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 1);
+	HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
+	HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
+	HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, 1);
+	HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 1);
+	HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, 1);
+	HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, 1);
+	HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, 1);
+}
+
+void turnOffLED()
+{
+	HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 0);
+	HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
+	HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
+	HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, 0);
+	HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 0);
+	HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, 0);
+	HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, 0);
+	HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, 0);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+
+	if (htim->Instance == TIM4)
+	{
+//		printf("TIMER4\n");
+		HAL_TIM_Base_Start_IT(&htim5);
+		turnOnLED();
+//		printf("TIMER4\n");
+	}
+
+	if (htim->Instance == TIM5)
+	{
+//		printf("TIMER5\n");
+		turnOffLED();
+//		__HAL_TIM_SET_PRESCALER(&htim3,665);
+//		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_2);
+//		printf("TIMER5\n");
+	}
+
+
+}
 /* USER CODE END 0 */
 
 /**
@@ -103,109 +161,457 @@ int main(void)
 	MX_TIM3_Init();
 	MX_USART2_UART_Init();
 	MX_SPI1_Init();
+	MX_TIM4_Init();
+	MX_TIM5_Init();
 	/* USER CODE BEGIN 2 */
-	HAL_ADC_ConfigChannel(&hadc, ADC_CHANNEL_0);
-	HAL_ADC_Start(&hadc);
 	MAX7219_Config();
+	HAL_TIM_Base_Start_IT(&htim4);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
+
 		while (HAL_GPIO_ReadPin(BTN1_GPIO_Port, BTN1_Pin) == 0)
 		{
 			SPI_write(0x0C, 0x01);//Shutdown à 1 (Mode activé)
-			adc = HAL_ADC_GetValue(&hadc);
-			psc = map(adc,0,4096,200,8000);
 
-			fq = (16000000/(psc+1))/10;
+			HAL_ADC_Start(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 50);
+			adc2 = HAL_ADC_GetValue(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 50);
+			adc1 = HAL_ADC_GetValue(&hadc);
+
+			HAL_Delay(50);
+
+			HAL_ADC_Stop(&hadc);
+
+			gamme = map(adc1,0,4096,3,13);
+			psc2 = map(adc2,0,4096,500,250);
+
+			switch (gamme)
+			{
+
+			case 12:
+				La = 3635/64;
+				break;
+
+			case 11:
+				La = 3635/32;
+				break;
+
+			case 10:
+				La = 3635/16;
+				break;
+
+			case 9:
+				La = 3635/8;
+				break;
+
+			case 8:
+				La = 3635/4;
+				multiplier = 4;
+				break;
+
+			case 7:
+				La = 3635/2;
+				multiplier = 2;
+				break;
+
+			case 6:
+				La = 3635/1;
+				multiplier = 1;
+				break;
+
+			case 5:
+				La = 3635*2;
+				multiplier = 2;
+				break;
+
+			case 4:
+				La = 3635*4;
+				multiplier = 4;
+				break;
+
+			case 3:
+				La = 3635*8;
+				multiplier = 8;
+				break;
+
+			case 2:
+				La = 3635*16;
+				multiplier = 16;
+				break;
+
+			case 1:
+				La = 3635*32;
+				multiplier = 32;
+				break;
+
+			case 0:
+				La = 3635*64;
+				multiplier = 64;
+				break;
+
+			default:
+
+				La = 3635;
+
+			}
+
+			fq = (16000000/(La+1))/10;
+
 
 			Segment_Display(fq);
 
-			printf("PSC Value : %d\tFrequence : %d\n",psc,fq);
+			printf("PSC Value : %d\tFrequence : %d\n",gamme,fq);
 
-			__HAL_TIM_SET_PRESCALER(&htim3,psc);
+			__HAL_TIM_SET_PRESCALER(&htim3,La);
+			__HAL_TIM_SET_AUTORELOAD(&htim4,psc2);
 
 			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
 
-			HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin,1);
-			HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin,1);
-			HAL_Delay(100);
+			HAL_Delay(50);
 		}
 
 		while (HAL_GPIO_ReadPin(BTN2_GPIO_Port, BTN2_Pin) == 0)
 		{
 			SPI_write(0x0C, 0x01);//Shutdown à 1 (Mode activé)
-			adc = HAL_ADC_GetValue(&hadc);
-			psc = map(adc,0,4096,200,8000) + 100;
 
-			fq = (16000000/(psc+1))/10;
+			HAL_ADC_Start(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 50);
+			adc2 = HAL_ADC_GetValue(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 50);
+			adc1 = HAL_ADC_GetValue(&hadc);
+
+			HAL_Delay(50);
+
+			HAL_ADC_Stop(&hadc);
+
+			gamme = map(adc1,0,4096,3,13);
+//			psc = map(adc1,0,4096,200,8000);
+			psc2 = map(adc2,0,4096,500,250);
+
+			switch (gamme)
+			{
+
+			case 12:
+				Do = 6109/64;
+				break;
+
+			case 11:
+				Do = 6109/32;
+				break;
+
+			case 10:
+				Do = 6109/16;
+				break;
+
+			case 9:
+				Do = 6109/8;
+				break;
+
+			case 8:
+				Do = 6109/4;
+				multiplier = 4;
+				break;
+
+			case 7:
+				Do = 6109/2;
+				multiplier = 2;
+				break;
+
+			case 6:
+				Do = 6109/1;
+				multiplier = 1;
+				break;
+
+			case 5:
+				Do = 6109*2;
+				multiplier = 2;
+				break;
+
+			case 4:
+				Do = 6109*4;
+				multiplier = 4;
+				break;
+
+			case 3:
+				Do = 6109*8;
+				multiplier = 8;
+				break;
+
+			case 2:
+				Do = 6109*16;
+				multiplier = 16;
+				break;
+
+			case 1:
+				Do = 6109*32;
+				multiplier = 32;
+				break;
+
+			case 0:
+				Do = 6109*64;
+				multiplier = 64;
+				break;
+
+			default:
+
+				Do = 6109;
+
+			}
+
+			fq = (16000000/(Do+1))/10;
+
+//			fq = (16000000/(psc+1))/10;
 
 			Segment_Display(fq);
 
-			printf("PSC Value : %d\tFrequence : %d\n",psc,fq);
-			__HAL_TIM_SET_PRESCALER(&htim3,psc);
+//			printf("PSC Value : %d\tFrequence : %d\n",psc,fq);
+			__HAL_TIM_SET_PRESCALER(&htim3,Do);
+			__HAL_TIM_SET_AUTORELOAD(&htim4,psc2);
 
 			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
 
-			HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin,1);
-			HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin,1);
-			HAL_Delay(100);
+			HAL_Delay(50);
 		}
 
 		while (HAL_GPIO_ReadPin(BTN3_GPIO_Port, BTN3_Pin) == 0)
 		{
 			SPI_write(0x0C, 0x01);//Shutdown à 1 (Mode activé)
-			adc = HAL_ADC_GetValue(&hadc);
-			psc = map(adc,0,4096,200,8000) + 150;
 
-			fq = (16000000/(psc+1))/10;
+			HAL_ADC_Start(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 10);
+			adc2 = HAL_ADC_GetValue(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 10);
+			adc1 = HAL_ADC_GetValue(&hadc);
+
+			HAL_Delay(50);
+
+			HAL_ADC_Stop(&hadc);
+
+			gamme = map(adc1,0,4096,3,13);
+			psc2 = map(adc2,0,4096,500,250);
+
+			switch (gamme)
+			{
+
+			case 12:
+				Re = 5455/64;
+				break;
+
+			case 11:
+				Re = 5455/32;
+				break;
+
+			case 10:
+				Re = 5455/16;
+				break;
+
+			case 9:
+				Re = 5455/8;
+				break;
+
+			case 8:
+				Re = 5455/4;
+				multiplier = 4;
+				break;
+
+			case 7:
+				Re = 5455/2;
+				multiplier = 2;
+				break;
+
+			case 6:
+				Re = 5455/1;
+				multiplier = 1;
+				break;
+
+			case 5:
+				Re = 5455*2;
+				multiplier = 2;
+				break;
+
+			case 4:
+				Re = 5455*4;
+				multiplier = 4;
+				break;
+
+			case 3:
+				Re = 5455*8;
+				multiplier = 8;
+				break;
+
+			case 2:
+				Re = 5455*16;
+				multiplier = 16;
+				break;
+
+			case 1:
+				Re = 5455*32;
+				multiplier = 32;
+				break;
+
+			case 0:
+				Re = 5455*64;
+				multiplier = 64;
+				break;
+
+			default:
+
+				Re = 5455;
+
+			}
+
+			fq = (16000000/(Re+1))/10;
 
 			Segment_Display(fq);
 
-			printf("PSC Value : %d\tFrequence : %d\n",psc,fq);
-			__HAL_TIM_SET_PRESCALER(&htim3,psc);
+//			printf("PSC Value : %d\tFrequence : %d\n",psc,fq);
+			__HAL_TIM_SET_PRESCALER(&htim3,Re);
+			__HAL_TIM_SET_AUTORELOAD(&htim4,psc2);
 
 			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
 
-			HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin,1);
-			HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin,1);
-			HAL_Delay(100);
+			HAL_Delay(50);
 		}
 
 		while (HAL_GPIO_ReadPin(BTN4_GPIO_Port, BTN4_Pin) == 0)
 		{
 			SPI_write(0x0C, 0x01);//Shutdown à 1 (Mode activé)
-			adc = HAL_ADC_GetValue(&hadc);
-			psc = map(adc,0,4096,200,8000) +200;
 
-			fq = (16000000/(psc+1))/10;
+			HAL_ADC_Start(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 50);
+			adc2 = HAL_ADC_GetValue(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 50);
+			adc1 = HAL_ADC_GetValue(&hadc);
+
+			HAL_Delay(50);
+
+			HAL_ADC_Stop(&hadc);
+
+			gamme = map(adc1,0,4096,3,13);
+			psc2 = map(adc2,0,4096,500,250);
+
+			switch (gamme)
+			{
+
+			case 12:
+				Mi = 4848/64;
+				break;
+
+			case 11:
+				Mi = 4848/32;
+				break;
+
+			case 10:
+				Mi = 4848/16;
+				break;
+
+			case 9:
+				Mi = 4848/8;
+				break;
+
+			case 8:
+				Mi = 4848/4;
+				multiplier = 4;
+				break;
+
+			case 7:
+				Mi = 4848/2;
+				multiplier = 2;
+				break;
+
+			case 6:
+				Mi = 4848/1;
+				multiplier = 1;
+				break;
+
+			case 5:
+				Mi = 4848*2;
+				multiplier = 2;
+				break;
+
+			case 4:
+				Mi = 4848*4;
+				multiplier = 4;
+				break;
+
+			case 3:
+				Mi = 4848*8;
+				multiplier = 8;
+				break;
+
+			case 2:
+				Mi = 4848*16;
+				multiplier = 16;
+				break;
+
+			case 1:
+				Mi = 4848*32;
+				multiplier = 32;
+				break;
+
+			case 0:
+				Mi = 4848*64;
+				multiplier = 64;
+				break;
+
+			default:
+
+				Mi = 4848;
+
+			}
+
+			fq = (16000000/(Mi+1))/10;
 
 			Segment_Display(fq);
 
-			printf("PSC Value : %d\tFrequence : %d\n",psc,fq);
-			__HAL_TIM_SET_PRESCALER(&htim3,psc);
+//			printf("PSC Value : %d\tFrequence : %d\n",psc,fq);
+			__HAL_TIM_SET_PRESCALER(&htim3,Mi);
+			__HAL_TIM_SET_AUTORELOAD(&htim4,psc2);
 
 			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
 
-			HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin,1);
-			HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin,1);
-			HAL_Delay(100);
+			HAL_Delay(50);
 		}
 
 		if ((HAL_GPIO_ReadPin(BTN1_GPIO_Port, BTN1_Pin) == 1) | (HAL_GPIO_ReadPin(BTN2_GPIO_Port, BTN2_Pin) == 1) | (HAL_GPIO_ReadPin(BTN3_GPIO_Port, BTN3_Pin) == 1) | (HAL_GPIO_ReadPin(BTN4_GPIO_Port, BTN4_Pin) == 1))
 		{
 			SPI_write(0x0C, 0x00);//Shutdown à 1 (Mode activé)
 			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
-			HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin,0);
-			HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin,0);
-			HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin,0);
-			HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin,0);
-			HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin,0);
-			HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin,0);
-			HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin,0);
-			HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin,0);
+
+			HAL_ADC_Start(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 10);
+			adc2 = HAL_ADC_GetValue(&hadc);
+
+			HAL_ADC_PollForConversion(&hadc, 10);
+			adc1 = HAL_ADC_GetValue(&hadc);
+
+			HAL_Delay(50);
+
+			HAL_ADC_Stop(&hadc);
+
+//			printf("adc1 : %d \tadc2 : %d\n",adc1,adc2);
+
+			psc2 = map(adc2,0,4096,500,250);
+
+//			printf("psc2 : %d\n",psc2);
+
+//			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,psc2/2);
+			__HAL_TIM_SET_AUTORELOAD(&htim4,psc2);
+
 		}
 
 		/* USER CODE END WHILE */
